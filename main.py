@@ -4,12 +4,13 @@ from __future__ import annotations
 from typing import Annotated  # python>=3.9
 from typing import Any
 import asyncio
+import aiohttp
 import os
 from core.logger import Logger
 
 from pylibob import OneBotImpl, Event  # Keep necessary pylibob imports
 from core.bot_actions import register_actions # Import the registration function
-from config import IMPL_NAME, IMPL_VERSION, CONNECTIONS, BOT_CONFIG # Import config
+from config import IMPL_NAME, IMPL_VERSION, CONNECTIONS, BOT_CONFIG, BOT_SERVER_URL # Import config
 
 # 检查并生成.env文件
 if not os.path.exists('.env'):
@@ -68,8 +69,26 @@ impl = OneBotImpl(
 register_actions(impl)
 
 
+async def check_version():
+    """检查服务器版本是否为0.4.2"""
+    try:
+        async with aiohttp.ClientSession() as session:
+            url = f"{BOT_SERVER_URL}/api/admin/system/version"
+            async with session.get(url) as response:
+                if response.status == 200:
+                    version = await response.text()
+                    if version != '0.4.2':
+                        logger.warning(f"当前服务器版本为{version}，暂未经过测试，可能无法正常使用")
+                    else:
+                        logger.info("服务器版本兼容性检查通过 (0.4.2)")
+                else:
+                    logger.error(f"获取版本信息失败: {response.status}")
+    except Exception as e:
+        logger.error(f"版本检查异常: {e}")
+
 if __name__ == "__main__":
     async def main():
+        await check_version()
         for bot in impl.bots.values():
             bot.online = True
         impl.is_good = True

@@ -46,6 +46,7 @@ if os.getenv('WEBSOCKET_REVERSE_ENABLED', 'true').lower() == 'true':
 # WEBHOOK_HOST, WEBHOOK_PORT
 WEBHOOK_HOST = os.getenv('WEBHOOK_HOST', '0.0.0.0')
 WEBHOOK_PORT = int(os.getenv('WEBHOOK_PORT', '8000'))
+BOT_SERVER_URL = os.getenv('BOT_SERVER_URL', 'http://127.0.0.1:3000')
 
 # 配置 Vocechat 机器人信息
 BOT_CONFIG = Bot(
@@ -53,11 +54,10 @@ BOT_CONFIG = Bot(
     user_id=os.getenv('BOT_USER_ID', '2'),
     online=os.getenv('BOT_ONLINE', 'false').lower() == 'true',
     extra={
-        "server_url": os.getenv('BOT_SERVER_URL', 'http://127.0.0.1:3000'),
+        "server_url": BOT_SERVER_URL,
         "api_key": os.getenv('BOT_API_KEY', '')
     }
 )
-
 SEND_PROXY = os.getenv('SEND_PROXY', 'http://127.0.0.1:7897')
 
 # 日志配置
