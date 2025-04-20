@@ -188,6 +188,14 @@ class WebSocketConnection(Connection):
         while self._heartbeat_run:
             try:
                 for ws in self.ws:
+                    if ws.ws.closed:
+                        self.logger.warning("连接已关闭，尝试断开并重新连接")
+                        try:
+                            await ws.ws.close()
+                        except Exception:
+                            pass
+                        await self.connect_to_remote()
+                        continue
                     await ws.send_json(
                         MetaHeartbeatEvent(
                             id=str(uuid4()),
@@ -198,6 +206,11 @@ class WebSocketConnection(Connection):
                 await asyncio.sleep(self.heartbeat_interval / 1000)
             except Exception:
                 logger.exception("推送心跳事件时发生异常")
+                try:
+                    await ws.ws.close()
+                except Exception:
+                    pass
+                await self.connect_to_remote()
 
     async def _start_heartbeat(self) -> None:
         logger.info(f"启动 {self.__class__.__name__} 心跳服务")
