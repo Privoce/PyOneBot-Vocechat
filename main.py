@@ -42,7 +42,9 @@ BOT_USER_ID=12 # 机器人用户ID
 BOT_SERVER_URL=https://example.com # vocechat服务器地址
 BOT_API_KEY=your_api_key
 
-SEND_PROXY=http://127.0.0.1:7897
+# 代理配置
+PROXY_ENABLED=false # 是否启用代理
+SEND_PROXY=http://127.0.0.1:7897 # 代理服务器地址
 
 # 日志配置
 LOG_ENABLED=true

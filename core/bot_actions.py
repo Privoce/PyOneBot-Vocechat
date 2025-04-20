@@ -15,7 +15,7 @@ import aiofiles
 import aiohttp
 from pylibob import Bot, OneBotImpl
 from core.logger import Logger
-from config import SEND_PROXY
+from config import SEND_PROXY, PROXY_ENABLED
 log = Logger()
 logger = log.get_logger(filename="bot_actions")
 # --- Friend Management ---
@@ -146,7 +146,7 @@ async def _vocechat_upload_file(bot: Bot, session: aiohttp.ClientSession, file_i
         form.add_field("chunk_is_last", "true")
 
         try:
-            async with session.post(upload_url, headers=headers, data=form, proxy=SEND_PROXY) as resp:
+            async with session.post(upload_url, headers=headers, data=form, proxy=SEND_PROXY if PROXY_ENABLED else None) as resp:
                 if resp.status >= 400:
                     error_text = await resp.text()
                     logger.error(f"文件上传API调用失败: HTTP {resp.status}, {error_text}")
@@ -266,7 +266,7 @@ def register_actions(impl: OneBotImpl):
                         payload = {"user_id": reply_segment["user_id"]} if reply_segment["user_id"] else {}
                         headers['Content-Type'] = 'application/json'
                         async with aiohttp.ClientSession() as client:
-                            async with client.post(endpoint, json=payload, headers=headers, proxy=SEND_PROXY) as response:
+                            async with client.post(endpoint, json=payload, headers=headers, proxy=SEND_PROXY if PROXY_ENABLED else None) as response:
                                 if response.status >= 400:
                                     error_text = await response.text()
                                     logger.error(f"发送回复消息失败: HTTP {response.status}, {error_text}")
@@ -293,7 +293,7 @@ def register_actions(impl: OneBotImpl):
                         payload = {"path": file_segment["file_id"]}
                         headers['Content-Type'] = 'vocechat/file'
                         async with aiohttp.ClientSession() as client:
-                            async with client.post(endpoint, json=payload, headers=headers, proxy=SEND_PROXY) as response:
+                            async with client.post(endpoint, json=payload, headers=headers, proxy=SEND_PROXY if PROXY_ENABLED else None) as response:
                                 if response.status >= 400:
                                     error_text = await response.text()
                                     logger.error(f"发送文件消息失败: HTTP {response.status}, {error_text}")
@@ -320,7 +320,7 @@ def register_actions(impl: OneBotImpl):
                             raise ValueError(f"Unsupported detail_type: {detail_type}")
 
                         async with aiohttp.ClientSession() as client:
-                            async with client.post(endpoint, data=str(payload).encode('utf-8'), headers=headers, proxy=SEND_PROXY) as response:
+                            async with client.post(endpoint, data=str(payload).encode('utf-8'), headers=headers, proxy=SEND_PROXY if PROXY_ENABLED else None) as response:
                                 if response.status >= 400:
                                     error_text = await response.text()
                                     logger.error(f"发送文本消息失败: HTTP {response.status}, {error_text}")

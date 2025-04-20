@@ -58,7 +58,9 @@ BOT_CONFIG = Bot(
         "api_key": os.getenv('BOT_API_KEY', '')
     }
 )
-SEND_PROXY = os.getenv('SEND_PROXY', 'http://127.0.0.1:7897')
+# 代理配置
+PROXY_ENABLED = os.getenv('PROXY_ENABLED', 'false').lower() == 'true'
+SEND_PROXY = os.getenv('SEND_PROXY', None)
 
 # 日志配置
 LOG_CONFIG = {
