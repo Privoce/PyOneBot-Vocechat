@@ -48,6 +48,17 @@ class VoceChatWebhook:
             # 构建消息内容
             message = []
             
+            # 处理回复消息
+            if detail.get("type") == "reply":
+                reply_mid = str(detail.get("mid", ""))  # 被回复的消息ID
+                message.append({
+                    "type": "reply",
+                    "data": {
+                        "message_id": reply_mid,
+                        "user_id": from_user_id
+                    }
+                })
+            
             # 处理@消息
             mention_pattern = r"@(\d+)\s"
             current_pos = 0

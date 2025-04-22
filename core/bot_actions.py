@@ -618,9 +618,97 @@ def register_actions(impl: OneBotImpl):
         raise NotImplementedError("Fragmented file upload is not currently supported by this implementation.")
 
     @impl.action("get_file")
-    async def get_file(file_id: str, type: str, **kwargs: Any):
-        # Not implemented - requires Vocechat API endpoint to get file info/data by ID
-        raise NotImplementedError("Get file is not currently supported by this implementation.")
+    async def get_file(file_id: str, type: str) -> dict[str, Any]:
+        """获取文件信息"""
+        try:
+            bot = _get_bot(impl)
+            api_base = bot.extra.get("server_url", "")
+            if not api_base:
+                raise ValueError("Missing server_url in bot configuration")
+                
+            api_key = bot.extra.get("api_key", "")
+            if not api_key:
+                raise ValueError("Missing api_key in bot configuration")
+
+            # 从file_id中提取文件路径
+            file_path = file_id
+            if not file_path:
+                raise ValueError("Invalid file_id format")
+
+            # 构建文件URL
+            file_url = f"{api_base}/api/resource/file?file_path={file_path}"
+            headers = {"x-api-key": api_key}
+
+            async with aiohttp.ClientSession() as session:
+                async with session.head(file_url, headers=headers, proxy=SEND_PROXY if PROXY_ENABLED else None) as response:
+                    if response.status >= 400:
+                        error_text = await response.text()
+                        logger.error(f"获取文件信息失败: HTTP {response.status}, {error_text}")
+                        raise ValueError(f"Failed to get file info: HTTP {response.status}, {error_text}")
+
+                    # 从响应头获取文件信息
+                    content_type = response.headers.get("Content-Type", "application/octet-stream")
+                    content_disposition = response.headers.get("Content-Disposition", "")
+                    filename = "unknown"
+                    if content_disposition:
+                        import re
+                        match = re.search(r'filename="?([^"]+)"?', content_disposition)
+                        if match:
+                            filename = match.group(1)
+                    else:
+                        # 从file_path中提取文件名
+                        filename = os.path.basename(file_path)
+
+                    result = {"name": filename}
+
+                    # 根据请求的类型返回不同格式的数据
+                    if type == "url":
+                        result["url"] = file_url
+                        result["headers"] = {"x-api-key": api_key}
+                    elif type == "path":
+                        # VoceChat不支持直接返回文件路径
+                        from pylibob.exception import OneBotImplError
+                        from pylibob.status import UNSUPPORTED_PARAM
+                        raise OneBotImplError(
+                            retcode=UNSUPPORTED_PARAM,
+                            message="Path type is not supported",
+                            data=None
+                        )
+                    elif type == "data":
+                        # 下载文件数据
+                        async with session.get(file_url, headers=headers, proxy=SEND_PROXY if PROXY_ENABLED else None) as data_response:
+                            if data_response.status >= 400:
+                                error_text = await data_response.text()
+                                logger.error(f"下载文件数据失败: HTTP {data_response.status}, {error_text}")
+                                raise ValueError(f"Failed to download file data: HTTP {data_response.status}, {error_text}")
+                            
+                            file_data = await data_response.read()
+                            result["data"] = base64.b64encode(file_data).decode()
+                            
+                            # 计算SHA256校验和
+                            import hashlib
+                            sha256 = hashlib.sha256(file_data).hexdigest()
+                            result["sha256"] = sha256
+                    else:
+                        from pylibob.exception import OneBotImplError
+                        from pylibob.status import UNSUPPORTED_PARAM
+                        raise OneBotImplError(
+                            retcode=UNSUPPORTED_PARAM,
+                            message=f"Unsupported file type: {type}",
+                            data=None
+                        )
+
+                    return result
+
+        except Exception as e:
+            logger.error(f"获取文件信息失败: {e}")
+            from pylibob.exception import OneBotImplError
+            from pylibob.status import INTERNAL_HANDLER_ERROR
+            raise OneBotImplError(
+                retcode=INTERNAL_HANDLER_ERROR,
+                message=f"Error getting file info: {e}",
+                data=None
+            )
 
     @impl.action("get_file_fragmented")
     async def get_file_fragmented(**kwargs: Any):
