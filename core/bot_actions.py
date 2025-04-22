@@ -181,6 +181,129 @@ def register_actions(impl: OneBotImpl):
     """Register OneBot actions with the implementation."""
     friend_manager = FriendManager(impl)
 
+    @impl.action("get_group_member_info")
+    async def get_group_member_info(group_id: str, user_id: str) -> dict[str, Any]:
+        """获取群成员信息"""
+        try:
+            # 从friend_list获取用户昵称
+            user_name = friend_manager.friend_dict.get(user_id, "")
+            # 如果没有找到昵称，尝试更新好友信息
+            if not user_name:
+                await friend_manager.update_friend_info(user_id)
+                user_name = friend_manager.friend_dict.get(user_id, "")
+            
+            return {
+                "user_id": user_id,
+                "user_name": user_name,
+                "user_displayname": user_name
+            }
+        except Exception as e:
+            logger.error(f"获取群成员信息失败: {e}")
+            from pylibob.exception import OneBotImplError
+            from pylibob.status import INTERNAL_HANDLER_ERROR
+            raise OneBotImplError(
+                retcode=INTERNAL_HANDLER_ERROR,
+                message=f"Error getting group member info: {e}",
+                data=None
+            )
+
+    @impl.action("get_group_member_list")
+    async def get_group_member_list(group_id: str) -> list[dict[str, Any]]:
+        """获取群成员列表"""
+        try:
+            bot = _get_bot(impl)
+            api_base = bot.extra.get("server_url", "")
+            if not api_base:
+                raise ValueError("Missing server_url in bot configuration")
+                
+            api_key = bot.extra.get("api_key", "")
+            if not api_key:
+                raise ValueError("Missing api_key in bot configuration")
+
+            headers = {
+                'x-api-key': api_key,
+                'accept': 'application/json; charset=utf-8'
+            }
+
+            async with aiohttp.ClientSession() as client:
+                endpoint = f'{api_base}/api/bot/group/{"{gid}"}?gid={group_id}'
+                async with client.get(endpoint, headers=headers, proxy=SEND_PROXY if PROXY_ENABLED else None) as response:
+                    if response.status >= 400:
+                        error_text = await response.text()
+                        logger.error(f"获取群组信息失败: HTTP {response.status}, {error_text}")
+                        raise ValueError(f"Failed to get group info: HTTP {response.status}, {error_text}")
+                    
+                    group_data = await response.json()
+                    members = group_data.get("members", [])
+                    
+                    # 获取每个成员的信息
+                    member_list = []
+                    for member_id in members:
+                        # 从friend_list获取用户昵称
+                        user_name = friend_manager.friend_dict.get(str(member_id), "")
+                        # 如果没有找到昵称，尝试更新好友信息
+                        if not user_name:
+                            await friend_manager.update_friend_info(str(member_id))
+                            user_name = friend_manager.friend_dict.get(str(member_id), "")
+                        
+                        member_list.append({
+                            "user_id": str(member_id),
+                            "user_name": user_name,
+                            "user_displayname": user_name
+                        })
+                    
+                    return member_list
+        except Exception as e:
+            logger.error(f"获取群成员列表失败: {e}")
+            from pylibob.exception import OneBotImplError
+            from pylibob.status import INTERNAL_HANDLER_ERROR
+            raise OneBotImplError(
+                retcode=INTERNAL_HANDLER_ERROR,
+                message=f"Error getting group member list: {e}",
+                data=None
+            )
+
+    @impl.action("get_group_info")
+    async def get_group_info(group_id: str) -> dict[str, Any]:
+        """获取群组信息"""
+        try:
+            bot = _get_bot(impl)
+            api_base = bot.extra.get("server_url", "")
+            if not api_base:
+                raise ValueError("Missing server_url in bot configuration")
+                
+            api_key = bot.extra.get("api_key", "")
+            if not api_key:
+                raise ValueError("Missing api_key in bot configuration")
+
+            headers = {
+                'x-api-key': api_key,
+                'accept': 'application/json; charset=utf-8'
+            }
+
+            async with aiohttp.ClientSession() as client:
+                endpoint = f'{api_base}/api/bot/group/{"{gid}"}?gid={group_id}'
+                async with client.get(endpoint, headers=headers, proxy=SEND_PROXY if PROXY_ENABLED else None) as response:
+                    if response.status >= 400:
+                        error_text = await response.text()
+                        logger.error(f"获取群组信息失败: HTTP {response.status}, {error_text}")
+                        raise ValueError(f"Failed to get group info: HTTP {response.status}, {error_text}")
+                    
+                    group_data = await response.json()
+                    return {
+                        "group_id": str(group_data.get("gid", "")),
+                        "group_name": group_data.get("name", "")
+                    }
+        except Exception as e:
+            logger.error(f"获取群组信息时发生未处理的异常: {e}")
+            from pylibob.exception import OneBotImplError
+            from pylibob.status import INTERNAL_HANDLER_ERROR
+            raise OneBotImplError(
+                retcode=INTERNAL_HANDLER_ERROR,
+                message=f"Error getting group info: {e}",
+                data=None
+            )
+
     @impl.action("get_friend_list")
     async def get_friend_list() -> list[dict[str, Any]]:
         """获取好友列表"""
@@ -607,58 +730,7 @@ def register_actions(impl: OneBotImpl):
                 data=None
             )
 
-    # @impl.action("get_group_info")
-    async def get_group_info(group_id: str) -> dict[str, Any]:
-        try:
-            bot = _get_bot(impl)
-            api_base = bot.extra.get("server_url", "")
-            if not api_base:
-                raise ValueError("Missing server_url in bot configuration")
-                
-            api_key = bot.extra.get("api_key", "")
-            if not api_key:
-                raise ValueError("Missing api_key in bot configuration")
 
-            endpoint = f'{api_base}/api/bot/group/{'{gid}'}?gid={group_id}'
-            headers = {
-                'x-api-key': api_key,
-                'accept': 'application/json; charset=utf-8'
-            }
-
-            async with aiohttp.ClientSession() as client:
-                try:
-                    async with client.get(endpoint, headers=headers) as response:
-                        if response.status >= 400:
-                            error_text = await response.text()
-                            logger.error(f"获取群组信息失败: HTTP {response.status}, {error_text}")
-                            raise ValueError(f"Failed to get group info: HTTP {response.status}, {error_text}")
-                        
-                        response_data = await response.json()
-                except aiohttp.ClientError as e:
-                    logger.error(f"获取群组信息时网络错误: {e}")
-                    raise ValueError(f"Network error while getting group info: {e}")
-                except json.JSONDecodeError as e:
-                    logger.error(f"解析群组信息响应时JSON解析错误: {e}")
-                    raise ValueError(f"JSON decode error while parsing group info response: {e}")
-
-            return {
-                "group_id": str(response_data.get("gid", "")),
-                "group_name": response_data.get("name", ""),
-                "group_remark": response_data.get("description", ""),
-                "member_count": len(response_data.get("members", [])),
-                "max_member_count": 0,  # VoceChat API doesn't provide this info
-                "owner_id": str(response_data.get("owner", ""))
-            }
-        except Exception as e:
-            logger.error(f"获取群组信息时发生未处理的异常: {e}")
-            # 使用OneBotImplError抛出异常，让impl.py中的handle_action捕获并返回FailedActionResponse
-            from pylibob.exception import OneBotImplError
-            from pylibob.status import INTERNAL_HANDLER_ERROR
-            raise OneBotImplError(
-                retcode=INTERNAL_HANDLER_ERROR,
-                message=f"Error getting group info: {e}",
-                data=None
-            )
 
 
     @impl.action("get_group_list")
