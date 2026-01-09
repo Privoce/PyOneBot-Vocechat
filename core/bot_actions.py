@@ -387,7 +387,7 @@ def register_actions(impl: OneBotImpl):
                     try:
                         endpoint = f'{api_base}/api/bot/reply/{reply_segment["message_id"]}'
                         payload = {"user_id": reply_segment["user_id"]} if reply_segment["user_id"] else {}
-                        headers['Content-Type'] = 'application/json'
+                        headers['Content-Type'] = 'text/plain'
                         async with aiohttp.ClientSession() as client:
                             async with client.post(endpoint, json=payload, headers=headers, proxy=SEND_PROXY if PROXY_ENABLED else None) as response:
                                 if response.status >= 400:
