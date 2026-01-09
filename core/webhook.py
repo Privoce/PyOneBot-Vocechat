@@ -65,10 +65,12 @@ class VoceChatWebhook:
             for match in re.finditer(mention_pattern, content):
                 # 添加@之前的文本
                 if match.start() > current_pos:
-                    message.append({
-                        "type": "text",
-                        "data": {"text": content[current_pos:match.start()]}
-                    })
+                    pre_text = content[current_pos:match.start()]
+                    if pre_text.strip():
+                        message.append({
+                            "type": "text",
+                            "data": {"text": pre_text}
+                        })
                 
                 # 添加@消息段
                 message.append({
