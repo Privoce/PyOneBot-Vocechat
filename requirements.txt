@@ -1,5 +1,6 @@
 fastapi
 aiofiles
+loguru
 starlette>=0.27.0
 uvicorn[standard]>=0.23.2,<1
 msgspec>=0.18.2
