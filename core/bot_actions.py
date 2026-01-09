@@ -382,24 +382,27 @@ def register_actions(impl: OneBotImpl):
                         logger.warning(f"不支持的消息类型: {msg_type}")
                         text_segments.append(f"[Unsupported message type: {msg_type}]")
 
-                # 发送reply消息段
-                for reply_segment in reply_segments:
+                send_text_via_reply = bool(reply_segments) and text_segments
+                if send_text_via_reply:
+                    reply_segment = reply_segments[0]
                     try:
                         endpoint = f'{api_base}/api/bot/reply/{reply_segment["message_id"]}'
-                        payload = {"user_id": reply_segment["user_id"]} if reply_segment["user_id"] else {}
+                        if reply_segment["user_id"]:
+                            endpoint = f'{endpoint}?user_id={reply_segment["user_id"]}'
+                        payload = "".join(text_segments)
                         headers['Content-Type'] = 'text/plain'
                         async with aiohttp.ClientSession() as client:
-                            async with client.post(endpoint, json=payload, headers=headers, proxy=SEND_PROXY if PROXY_ENABLED else None) as response:
+                            async with client.post(endpoint, data=str(payload).encode('utf-8'), headers=headers, proxy=SEND_PROXY if PROXY_ENABLED else None) as response:
                                 if response.status >= 400:
                                     error_text = await response.text()
-                                    logger.error(f"发送回复消息失败: HTTP {response.status}, {error_text}")
-                                    raise ValueError(f"Failed to send reply message: HTTP {response.status}, {error_text}")
+                                    logger.error(f"发送回复文本消息失败: HTTP {response.status}, {error_text}")
+                                    raise ValueError(f"Failed to send reply text message: HTTP {response.status}, {error_text}")
                     except aiohttp.ClientError as e:
-                        logger.error(f"发送回复消息时网络错误: {e}")
-                        raise ValueError(f"Network error while sending reply message: {e}")
+                        logger.error(f"发送回复文本消息时网络错误: {e}")
+                        raise ValueError(f"Network error while sending reply text message: {e}")
                     except Exception as e:
-                        logger.error(f"发送回复消息时发生错误: {e}")
-                        raise ValueError(f"Error while sending reply message: {e}")
+                        logger.error(f"发送回复文本消息时发生错误: {e}")
+                        raise ValueError(f"Error while sending reply text message: {e}")
 
                 # 发送file消息段
                 for file_segment in file_segments:
@@ -429,7 +432,7 @@ def register_actions(impl: OneBotImpl):
                         raise ValueError(f"Error while sending file message: {e}")
 
                 # 发送text消息段
-                if text_segments:
+                if text_segments and not send_text_via_reply:
                     try:
                         payload = "".join(text_segments)
                         headers['Content-Type'] = 'text/plain'
