@@ -804,11 +804,11 @@ def register_actions(impl: OneBotImpl):
                     raise ValueError(f"JSON decode error while parsing user info response: {e}")
 
             return {
-                    "user_id": user_id,
-                    "user_name": response_data.get("name", ""),
-                    "user_displayname": response_data.get("name", ""),
-                    "user_avatar": f"https://vocechat.***REMOVED***/api/resource/avatar?uid={user_id}",
-                    "user_remark": ""
+                "user_id": user_id,
+                "user_name": response_data.get("name", ""),
+                "user_displayname": response_data.get("name", ""),
+                "user_avatar": f"{api_base}/api/resource/avatar?uid={user_id}",
+                "user_remark": ""
             }
         except Exception as e:
             logger.error(f"获取用户信息时发生未处理的异常: {e}")
