@@ -86,12 +86,6 @@ class VoceChatWebhook:
                     "data": {"text": content[current_pos:]}
                 })
             
-            # 如果消息列表为空，添加一个空文本消息段
-            if not message:
-                message.append({
-                    "type": "text",
-                    "data": {"text": content}
-                })
             
             # 如果是文件消息，添加文件信息
             if content_type == "vocechat/file":
@@ -102,6 +96,14 @@ class VoceChatWebhook:
                         "type": "image",
                         "data": {"file_id": content}
                     })
+
+            
+            # 如果消息列表为空，添加一个空文本消息段
+            if not message:
+                message.append({
+                    "type": "text",
+                    "data": {"text": content}
+                })
             
             # 确定消息类型（群聊/私聊）
             # 生成事件唯一标识符
