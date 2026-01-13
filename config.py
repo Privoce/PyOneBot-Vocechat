@@ -62,6 +62,10 @@ BOT_CONFIG = Bot(
 PROXY_ENABLED = os.getenv('PROXY_ENABLED', 'false').lower() == 'true'
 SEND_PROXY = os.getenv('SEND_PROXY', None)
 
+# 缓存配置
+CACHE_ENABLED = os.getenv('CACHE_ENABLED', 'true').lower() == 'true'
+CACHE_TTL_SECONDS = int(os.getenv('CACHE_TTL_SECONDS', '600'))
+
 # 日志配置
 LOG_CONFIG = {
     'enabled': os.getenv('LOG_ENABLED', 'true').lower() == 'true',
