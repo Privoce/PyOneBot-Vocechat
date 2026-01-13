@@ -15,7 +15,7 @@ import aiofiles
 import aiohttp
 from pylibob import Bot, OneBotImpl
 from core.logger import Logger
-from config import SEND_PROXY, PROXY_ENABLED
+from config import SEND_PROXY, PROXY_ENABLED, CACHE_ENABLED, CACHE_TTL_SECONDS
 log = Logger()
 logger = log.get_logger(filename="bot_actions")
 # --- Friend Management ---
@@ -25,7 +25,9 @@ class FriendManager:
         self.impl = impl
         self.friend_dict: dict[str, str] = {}
         self.storage_path = "friend_list.json"
-        self.last_update_time = 0
+        self.last_update_time: dict[str, float] = {}
+        self.cache_enabled = CACHE_ENABLED
+        self.cache_ttl_seconds = CACHE_TTL_SECONDS
         self._load_friend_list()
 
     def _load_friend_list(self) -> None:
@@ -34,6 +36,13 @@ class FriendManager:
             if os.path.exists(self.storage_path):
                 with open(self.storage_path, "r", encoding="utf-8") as f:
                     self.friend_dict = json.load(f)
+                if self.cache_enabled:
+                    current_time = time.time()
+                    self.last_update_time = {
+                        user_id: current_time
+                        for user_id, name in self.friend_dict.items()
+                        if name
+                    }
                 # logger.debug("成功加载好友列表")
         except Exception as e:
             logger.error(f"加载好友列表失败: {e}")
@@ -49,11 +58,11 @@ class FriendManager:
 
     async def update_friend_info(self, user_id: str) -> None:
         """更新好友信息"""
-        current_time = time.time()
-        if current_time - self.last_update_time < 600:  # 10分钟 = 600秒
+        if not self._needs_refresh(user_id):
             return
             
         try:
+            current_time = time.time()
             bot = _get_bot(self.impl)
             server_url = bot.extra["server_url"]
             api_key = bot.extra["api_key"]
@@ -66,12 +75,56 @@ class FriendManager:
                         data = await response.json()
                         self.friend_dict[user_id] = data.get("name", "")
                         self._save_friend_list()
-                        self.last_update_time = current_time
+                        if self.cache_enabled:
+                            self.last_update_time[user_id] = current_time
                         logger.debug(f"更新好友信息成功: {user_id}")
                     else:
                         logger.error(f"获取用户信息失败: {response.status}")
         except Exception as e:
             logger.error(f"更新好友信息失败: {e}")
+
+    def _needs_refresh(self, user_id: str) -> bool:
+        if not self.cache_enabled:
+            return True
+        last_update = self.last_update_time.get(user_id)
+        if last_update is None:
+            return True
+        return time.time() - last_update >= self.cache_ttl_seconds
+
+    def get_friend_name(self, user_id: str) -> str:
+        return self.friend_dict.get(user_id, "")
+
+    def get_friend_info(self, user_id: str) -> dict[str, str]:
+        name = self.get_friend_name(user_id)
+        return {
+            "user_id": user_id,
+            "user_name": name,
+            "user_displayname": name
+        }
+
+
+class TimedCache:
+    def __init__(self, enabled: bool, ttl_seconds: int):
+        self.enabled = enabled
+        self.ttl_seconds = ttl_seconds
+        self._cache: dict[str, tuple[float, Any]] = {}
+
+    def get(self, key: str) -> Any | None:
+        if not self.enabled:
+            return None
+        cached = self._cache.get(key)
+        if not cached:
+            return None
+        cached_time, value = cached
+        if time.time() - cached_time < self.ttl_seconds:
+            return value
+        self._cache.pop(key, None)
+        return None
+
+    def set(self, key: str, value: Any) -> None:
+        if not self.enabled:
+            return
+        self._cache[key] = (time.time(), value)
 
 # --- Helper Functions --- (Moved from main.py)
 
@@ -180,17 +233,20 @@ async def _vocechat_upload_file(bot: Bot, session: aiohttp.ClientSession, file_i
 def register_actions(impl: OneBotImpl):
     """Register OneBot actions with the implementation."""
     friend_manager = FriendManager(impl)
+    group_list_cache = TimedCache(CACHE_ENABLED, CACHE_TTL_SECONDS)
+    group_member_list_cache = TimedCache(CACHE_ENABLED, CACHE_TTL_SECONDS)
+    friend_list_cache = TimedCache(CACHE_ENABLED, CACHE_TTL_SECONDS)
 
     @impl.action("get_group_member_info")
     async def get_group_member_info(group_id: str, user_id: str) -> dict[str, Any]:
         """获取群成员信息"""
         try:
             # 从friend_list获取用户昵称
-            user_name = friend_manager.friend_dict.get(user_id, "")
-            # 如果没有找到昵称，尝试更新好友信息
-            if not user_name:
+            user_name = friend_manager.get_friend_name(user_id)
+            # 如果没有找到昵称或缓存过期，尝试更新好友信息
+            if not user_name or friend_manager._needs_refresh(user_id):
                 await friend_manager.update_friend_info(user_id)
-                user_name = friend_manager.friend_dict.get(user_id, "")
+                user_name = friend_manager.get_friend_name(user_id)
             
             return {
                 "user_id": user_id,
@@ -211,6 +267,10 @@ def register_actions(impl: OneBotImpl):
     async def get_group_member_list(group_id: str) -> list[dict[str, Any]]:
         """获取群成员列表"""
         try:
+            cached_members = group_member_list_cache.get(group_id)
+            if cached_members is not None:
+                return cached_members
+
             bot = _get_bot(impl)
             api_base = bot.extra.get("server_url", "")
             if not api_base:
@@ -240,18 +300,20 @@ def register_actions(impl: OneBotImpl):
                     member_list = []
                     for member_id in members:
                         # 从friend_list获取用户昵称
-                        user_name = friend_manager.friend_dict.get(str(member_id), "")
-                        # 如果没有找到昵称，尝试更新好友信息
-                        if not user_name:
-                            await friend_manager.update_friend_info(str(member_id))
-                            user_name = friend_manager.friend_dict.get(str(member_id), "")
+                        member_id_str = str(member_id)
+                        user_name = friend_manager.get_friend_name(member_id_str)
+                        # 如果没有找到昵称或缓存过期，尝试更新好友信息
+                        if not user_name or friend_manager._needs_refresh(member_id_str):
+                            await friend_manager.update_friend_info(member_id_str)
+                            user_name = friend_manager.get_friend_name(member_id_str)
                         
                         member_list.append({
-                            "user_id": str(member_id),
+                            "user_id": member_id_str,
                             "user_name": user_name,
                             "user_displayname": user_name
                         })
                     
+                    group_member_list_cache.set(group_id, member_list)
                     return member_list
         except Exception as e:
             logger.error(f"获取群成员列表失败: {e}")
@@ -307,6 +369,9 @@ def register_actions(impl: OneBotImpl):
     @impl.action("get_friend_list")
     async def get_friend_list() -> list[dict[str, Any]]:
         """获取好友列表"""
+        cached_friends = friend_list_cache.get("friend_list")
+        if cached_friends is not None:
+            return cached_friends
         friend_list = []
         for user_id, name in friend_manager.friend_dict.items():
             friend_list.append({
@@ -315,6 +380,7 @@ def register_actions(impl: OneBotImpl):
                 "user_displayname": "",
                 "user_remark": ""
             })
+        friend_list_cache.set("friend_list", friend_list)
         return friend_list
 
     @impl.action("send_message")
@@ -827,6 +893,10 @@ def register_actions(impl: OneBotImpl):
     @impl.action("get_group_list")
     async def get_group_list() -> dict[str, Any]:
         try:
+            cached_groups = group_list_cache.get("group_list")
+            if cached_groups is not None:
+                return cached_groups
+
             bot = _get_bot(impl)
             api_base = bot.extra.get("server_url", "")
             if not api_base:
@@ -869,6 +939,7 @@ def register_actions(impl: OneBotImpl):
                 logger.error(f"处理群组数据时发生错误: {e}")
                 raise ValueError(f"Error processing group data: {e}")
         
+            group_list_cache.set("group_list", groups)
             return groups
         except Exception as e:
             logger.error(f"获取群组列表时发生未处理的异常: {e}")
